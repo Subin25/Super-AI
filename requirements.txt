@@ -1,11 +1,6 @@
 streamlit
-openai
-google-generativeai
-langchain==0.1.20
-langchain-community==0.0.26
-chromadb
-tiktoken
-PyMuPDF
-python-docx
-google-search-results
 python-dotenv
+serpapi
+pypdf2
+python-docx
+Pillow
