@@ -1,80 +1,77 @@
 import streamlit as st
-from dotenv import load_dotenv
 import os
-import base64
-from PIL import Image
-from serpapi import GoogleSearch
+from dotenv import load_dotenv
+import requests
 
 load_dotenv()
+st.set_page_config(page_title="So sánh AI", layout="wide")
 
-st.set_page_config(page_title="Trợ lý AI tổng hợp", layout="wide")
+# Khởi tạo session
+if "ai_chain" not in st.session_state:
+    st.session_state.ai_chain = []
+if "result" not in st.session_state:
+    st.session_state.result = {}
 
-# Sidebar
-st.sidebar.title("🔧 Tính năng")
-menu = st.sidebar.radio("Chọn chức năng", [
-    "🗂 Tải lên tài liệu",
-    "🔍 Tìm kiếm trên mạng",
-    "🤖 So sánh AI",
-    "💾 Lưu phiên trò chuyện"
-])
+# Giao diện sidebar
+st.sidebar.title("⚙️ Cài đặt")
+selected_ais = st.sidebar.multiselect(
+    "Chọn AI muốn sử dụng theo thứ tự:",
+    ["DeepSeek", "GPT", "Gemini"],
+    default=["DeepSeek", "GPT", "Gemini"]
+)
 
-# Session state
-if "chat_log" not in st.session_state:
-    st.session_state.chat_log = []
+# Ô nhập prompt
+st.title("🤖 Trợ lý AI đa mô hình")
+prompt = st.text_area("✍️ Nhập yêu cầu của bạn:")
 
-# Tải tài liệu
-if menu == "🗂 Tải lên tài liệu":
-    st.title("📄 Tải lên tài liệu (PDF, DOCX, TXT, Hình ảnh)")
-    uploaded_files = st.file_uploader(
-        "📤 Kéo thả hoặc chọn nhiều tệp", 
-        type=["pdf", "docx", "txt", "png", "jpg", "jpeg"], 
-        accept_multiple_files=True
-    )
-    if uploaded_files:
-        for file in uploaded_files:
-            st.success(f"Đã tải lên: {file.name}")
-            if file.type.startswith("image/"):
-                img = Image.open(file)
-                st.image(img, caption=file.name)
+if st.button("🚀 Gửi yêu cầu"):
+    if not selected_ais or not prompt:
+        st.warning("Vui lòng nhập prompt và chọn ít nhất 1 AI.")
     else:
-        st.info("Chưa có tệp nào được tải lên.")
+        current_input = prompt
+        st.session_state.result = {}
 
-# Tìm kiếm SerpAPI
-elif menu == "🔍 Tìm kiếm trên mạng":
-    st.title("🔍 Tìm kiếm thông tin với SerpAPI")
-    query = st.text_input("🔎 Nhập nội dung cần tìm kiếm:")
-    if query:
-        params = {
-            "q": query,
-            "api_key": os.getenv("SERPAPI_API_KEY")
-        }
-        try:
-            search = GoogleSearch(params)
-            results = search.get_dict()
-            if "organic_results" in results:
-                for r in results["organic_results"]:
-                    st.markdown(f"🔗 [{r['title']}]({r['link']})")
-            else:
-                st.warning("Không có kết quả.")
-        except Exception as e:
-            st.error(f"Lỗi khi truy vấn SerpAPI: {e}")
+        for ai in selected_ais:
+            if ai == "DeepSeek":
+                res = requests.post(
+                    "https://api.deepseek.com/chat",
+                    json={"prompt": current_input},
+                    headers={"Authorization": f"Bearer {os.getenv('DEEPSEEK_API_KEY')}"}
+                )
+                reply = res.json().get("response", "❌ Lỗi từ DeepSeek.")
+                st.session_state.result["DeepSeek"] = reply
+                current_input = reply
 
-# So sánh AI
-elif menu == "🤖 So sánh AI":
-    st.title("🤖 So sánh phản hồi giữa ChatGPT và Gemini")
-    prompt = st.text_area("💬 Nhập nội dung bạn muốn hỏi cả hai mô hình:")
-    if prompt:
-        st.session_state.chat_log.append(f"Bạn: {prompt}")
-        st.info("(Đây là bản mô phỏng - cần tích hợp API thật)")
-        st.subheader("🔷 ChatGPT")
-        st.write("Trả lời từ ChatGPT: ...")
-        st.subheader("🟡 Gemini")
-        st.write("Trả lời từ Gemini: ...")
-        st.session_state.chat_log.append("ChatGPT: ...\nGemini: ...")
+            elif ai == "GPT":
+                res = requests.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    json={
+                        "model": "gpt-3.5-turbo",
+                        "messages": [{"role": "user", "content": current_input}]
+                    },
+                    headers={
+                        "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
+                        "Content-Type": "application/json"
+                    }
+                )
+                reply = res.json()["choices"][0]["message"]["content"]
+                st.session_state.result["GPT"] = reply
+                current_input = reply
 
-# Lưu trò chuyện
-elif menu == "💾 Lưu phiên trò chuyện":
-    st.title("💾 Xuất toàn bộ trò chuyện")
-    if st.session_state.chat_log:
-        chat_text = "\n\n".join(st.session_state.chat_log)
-        b64 =
+            elif ai == "Gemini":
+                res = requests.post(
+                    "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
+                    params={"key": os.getenv("GEMINI_API_KEY")},
+                    json={"contents": [{"parts": [{"text": current_input}]}]}
+                )
+                reply = res.json()["candidates"][0]["content"]["parts"][0]["text"]
+                st.session_state.result["Gemini"] = reply
+                current_input = reply
+
+# Hiển thị kết quả
+if st.session_state.result:
+    st.header("🧾 Kết quả phản hồi")
+    for ai in selected_ais:
+        if ai in st.session_state.result:
+            st.subheader(f"🔹 {ai}")
+            st.write(st.session_state.result[ai])
