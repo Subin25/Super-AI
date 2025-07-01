@@ -1,58 +1,45 @@
 import streamlit as st
 from dotenv import load_dotenv
 import os
-
-# Xử lý lỗi khi không có serpapi
-try:
-    from serpapi import GoogleSearch
-except ImportError:
-    GoogleSearch = None
+import base64
+from serpapi import GoogleSearch
 
 load_dotenv()
 
 st.set_page_config(page_title="Trợ lý AI tổng hợp", layout="wide")
 
-# Khởi tạo bộ nhớ lưu chat
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-
-st.title("🧠 Trợ lý AI tổng hợp")
-menu = st.sidebar.radio("Chức năng", [
-    "Tải lên tài liệu",
-    "Tải ảnh từ máy",
-    "Tìm kiếm trên mạng",
-    "So sánh hai mô hình AI",
-    "Xem lịch sử trò chuyện"
+# Sidebar
+st.sidebar.title("🔧 Tính năng")
+menu = st.sidebar.radio("Chọn chức năng", [
+    "🗂 Tải lên tài liệu",
+    "🔍 Tìm kiếm trên mạng",
+    "🤖 So sánh AI",
+    "💾 Lưu phiên trò chuyện"
 ])
 
-if menu == "Tải lên tài liệu":
-    st.header("📄 Tải lên tài liệu (PDF, DOCX, TXT)")
-    uploaded_files = st.file_uploader("Chọn tệp", type=["pdf", "docx", "txt"], accept_multiple_files=True)
+# Session state
+if "chat_log" not in st.session_state:
+    st.session_state.chat_log = []
+
+# Giao diện từng tab
+if menu == "🗂 Tải lên tài liệu":
+    st.title("📄 Tải lên tài liệu (PDF, DOCX, TXT)")
+    uploaded_files = st.file_uploader("Kéo thả hoặc chọn nhiều tệp", type=["pdf", "docx", "txt"], accept_multiple_files=True)
     if uploaded_files:
         for file in uploaded_files:
             st.success(f"Đã tải lên: {file.name}")
     else:
         st.info("Chưa có tệp nào được tải lên.")
 
-elif menu == "Tải ảnh từ máy":
-    st.header("🖼️ Tải ảnh từ thiết bị (PNG, JPG)")
-    image_files = st.file_uploader("Chọn ảnh", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
-    if image_files:
-        for img in image_files:
-            st.image(img, caption=img.name, use_column_width=True)
-    else:
-        st.info("Chưa có ảnh nào được tải lên.")
-
-elif menu == "Tìm kiếm trên mạng":
-    st.header("🔍 Tìm kiếm thông tin qua Google")
-    query = st.text_input("Nhập nội dung cần tìm")
+elif menu == "🔍 Tìm kiếm trên mạng":
+    st.title("🔍 Tìm kiếm thông tin với SerpAPI")
+    query = st.text_input("Nhập nội dung cần tìm kiếm:")
     if query:
-        st.session_state.chat_history.append(("🔍 Tìm kiếm", query))
-        if GoogleSearch:
-            params = {
-                "q": query,
-                "api_key": os.getenv("SERPAPI_API_KEY")
-            }
+        params = {
+            "q": query,
+            "api_key": os.getenv("SERPAPI_API_KEY")
+        }
+        try:
             search = GoogleSearch(params)
             results = search.get_dict()
             if "organic_results" in results:
@@ -60,24 +47,26 @@ elif menu == "Tìm kiếm trên mạng":
                     st.markdown(f"[{r['title']}]({r['link']})")
             else:
                 st.warning("Không có kết quả.")
-        else:
-            st.error("Chưa cài đặt thư viện serpapi.")
+        except Exception as e:
+            st.error(f"Lỗi khi truy vấn SerpAPI: {e}")
 
-elif menu == "So sánh hai mô hình AI":
-    st.header("🤖 So sánh mô hình ChatGPT và Gemini")
-    prompt = st.text_area("Nhập nội dung cần hỏi:")
+elif menu == "🤖 So sánh AI":
+    st.title("🤖 So sánh phản hồi giữa ChatGPT và Gemini")
+    prompt = st.text_area("Nhập nội dung bạn muốn hỏi cả hai mô hình:")
     if prompt:
-        st.session_state.chat_history.append(("⚖️ So sánh AI", prompt))
-        st.info("(Ví dụ mô phỏng - cần tích hợp API thật)")
-        st.subheader("🔷 ChatGPT:")
+        st.info("(Đây là bản mô phỏng - cần tích hợp API thật)")
+        st.subheader("🔷 ChatGPT")
         st.write("Trả lời từ ChatGPT: ...")
-        st.subheader("🟡 Gemini:")
+
+        st.subheader("🟡 Gemini")
         st.write("Trả lời từ Gemini: ...")
 
-elif menu == "Xem lịch sử trò chuyện":
-    st.header("🕒 Lịch sử trò chuyện")
-    if st.session_state.chat_history:
-        for i, (func, content) in enumerate(st.session_state.chat_history[::-1], 1):
-            st.markdown(f"**{i}. {func}:** {content}")
+elif menu == "💾 Lưu phiên trò chuyện":
+    st.title("💾 Xuất toàn bộ trò chuyện")
+    if st.session_state.chat_log:
+        chat_text = "\n\n".join(st.session_state.chat_log)
+        b64 = base64.b64encode(chat_text.encode()).decode()
+        href = f'<a href="data:file/txt;base64,{b64}" download="chat_log.txt">📥 Tải về file chat_log.txt</a>'
+        st.markdown(href, unsafe_allow_html=True)
     else:
-        st.info("Chưa có lịch sử trò chuyện nào.")
+        st.info("Chưa có nội dung trò chuyện để lưu.")
