@@ -54,12 +54,13 @@ elif menu == "🤖 So sánh AI":
     st.title("🤖 So sánh phản hồi giữa ChatGPT và Gemini")
     prompt = st.text_area("Nhập nội dung bạn muốn hỏi cả hai mô hình:")
     if prompt:
+        st.session_state.chat_log.append(f"🧠 Câu hỏi: {prompt}")
         st.info("(Đây là bản mô phỏng - cần tích hợp API thật)")
         st.subheader("🔷 ChatGPT")
         st.write("Trả lời từ ChatGPT: ...")
-
         st.subheader("🟡 Gemini")
         st.write("Trả lời từ Gemini: ...")
+        st.session_state.chat_log.append("🔷 ChatGPT: ...\n🟡 Gemini: ...")
 
 elif menu == "💾 Lưu phiên trò chuyện":
     st.title("💾 Xuất toàn bộ trò chuyện")
