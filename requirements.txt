@@ -8,6 +8,5 @@ pymupdf
 python-dotenv
 langchain
 langchain-community
-chromadb
 tiktoken
 google-search-results
