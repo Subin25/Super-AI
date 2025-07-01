@@ -1,6 +1,6 @@
 streamlit
 python-dotenv
-serpapi==1.5.0
+requests
 pypdf2
 python-docx
 Pillow
