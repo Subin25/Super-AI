@@ -4,44 +4,47 @@ from dotenv import load_dotenv
 import requests
 
 load_dotenv()
-st.set_page_config(page_title="So sánh AI", layout="wide")
+st.set_page_config(page_title="Trợ lý AI Đa mô hình", layout="wide")
 
-# Khởi tạo session
+# Tạo session state để lưu hội thoại
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
 if "ai_chain" not in st.session_state:
     st.session_state.ai_chain = []
-if "result" not in st.session_state:
-    st.session_state.result = {}
 
-# Giao diện sidebar
-st.sidebar.title("⚙️ Cài đặt")
-selected_ais = st.sidebar.multiselect(
-    "Chọn AI muốn sử dụng theo thứ tự:",
+# Sidebar - chọn AI theo thứ tự
+st.sidebar.title("⚙️ Chọn AI sử dụng")
+ai_options = st.sidebar.multiselect(
+    "Thứ tự AI bạn muốn dùng:",
     ["DeepSeek", "GPT", "Gemini"],
     default=["DeepSeek", "GPT", "Gemini"]
 )
 
-# Ô nhập prompt
-st.title("🤖 Trợ lý AI đa mô hình")
-prompt = st.text_area("✍️ Nhập yêu cầu của bạn:")
+# Hiển thị đoạn chat trước đó
+st.title("💬 Trò chuyện với Trợ lý AI")
+st.markdown("Hỏi gì đó bên dưới để bắt đầu...")
 
-if st.button("🚀 Gửi yêu cầu"):
-    if not selected_ais or not prompt:
-        st.warning("Vui lòng nhập prompt và chọn ít nhất 1 AI.")
-    else:
-        current_input = prompt
-        st.session_state.result = {}
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
-        for ai in selected_ais:
+# Nhập prompt
+prompt = st.chat_input("Hỏi bất kỳ điều gì")
+
+if prompt and ai_options:
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    current_input = prompt
+
+    for ai in ai_options:
+        try:
             if ai == "DeepSeek":
                 res = requests.post(
                     "https://api.deepseek.com/chat",
                     json={"prompt": current_input},
                     headers={"Authorization": f"Bearer {os.getenv('DEEPSEEK_API_KEY')}"}
                 )
-                reply = res.json().get("response", "❌ Lỗi từ DeepSeek.")
-                st.session_state.result["DeepSeek"] = reply
-                current_input = reply
-
+                reply = res.json().get("response", "❌ DeepSeek không phản hồi.")
             elif ai == "GPT":
                 res = requests.post(
                     "https://api.openai.com/v1/chat/completions",
@@ -55,9 +58,6 @@ if st.button("🚀 Gửi yêu cầu"):
                     }
                 )
                 reply = res.json()["choices"][0]["message"]["content"]
-                st.session_state.result["GPT"] = reply
-                current_input = reply
-
             elif ai == "Gemini":
                 res = requests.post(
                     "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent",
@@ -65,13 +65,11 @@ if st.button("🚀 Gửi yêu cầu"):
                     json={"contents": [{"parts": [{"text": current_input}]}]}
                 )
                 reply = res.json()["candidates"][0]["content"]["parts"][0]["text"]
-                st.session_state.result["Gemini"] = reply
-                current_input = reply
+        except Exception as e:
+            reply = f"❌ Lỗi khi truy vấn {ai}: {e}"
 
-# Hiển thị kết quả
-if st.session_state.result:
-    st.header("🧾 Kết quả phản hồi")
-    for ai in selected_ais:
-        if ai in st.session_state.result:
-            st.subheader(f"🔹 {ai}")
-            st.write(st.session_state.result[ai])
+        # Hiển thị & lưu phản hồi AI
+        with st.chat_message("assistant"):
+            st.markdown(f"**{ai} trả lời:**\n\n{reply}")
+        st.session_state.messages.append({"role": "assistant", "content": f"**{ai}**: {reply}"})
+        current_input = reply
