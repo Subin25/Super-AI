@@ -1,119 +1,129 @@
+import os
 import streamlit as st
-import openai
+from dotenv import load_dotenv
+from openai import OpenAI
 import google.generativeai as genai
 import requests
-import json
-import os
-import datetime
-import fitz  # PyMuPDF
-import docx  # python-docx
 from serpapi import GoogleSearch
+from PyPDF2 import PdfReader
+import docx
 from langchain_community.vectorstores import FAISS
-from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain.embeddings import OpenAIEmbeddings
 from langchain.text_splitter import CharacterTextSplitter
-from langchain.document_loaders import TextLoader
-from dotenv import load_dotenv
+from langchain.docstore.document import Document
 
-# === Load environment variables ===
+# Load API keys từ Streamlit Secrets hoặc biến môi trường
 load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
-serpapi_key = os.getenv("SERPAPI_KEY")
+OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
+DEEPSEEK_API_KEY = st.secrets.get("DEEPSEEK_API_KEY", os.getenv("DEEPSEEK_API_KEY"))
+SERPAPI_KEY = st.secrets.get("SERPAPI_API_KEY", os.getenv("SERPAPI_API_KEY"))
 
-# === DeepSeek Call ===
-def deepseek_response(prompt):
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {deepseek_api_key}"
-    }
-    payload = {
-        "model": "deepseek-chat",
-        "messages": [
-            {"role": "system", "content": "Bạn là trợ lý AI."},
-            {"role": "user", "content": prompt}
-        ],
-        "stream": False
-    }
-    response = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload)
-    result = response.json()
-    return result['choices'][0]['message']['content']
+# Cấu hình API
+client = OpenAI(api_key=OPENAI_API_KEY)
+genai.configure(api_key=GEMINI_API_KEY)
 
-# === Gemini Call ===
-def gemini_response(prompt):
-    model = genai.GenerativeModel("gemini-pro")
-    response = model.generate_content(prompt)
-    return response.text
+# --- Xử lý tài liệu ---
+def read_file(uploaded_file):
+    if uploaded_file.type == "application/pdf":
+        pdf_reader = PdfReader(uploaded_file)
+        return "\n".join([page.extract_text() or "" for page in pdf_reader.pages])
+    elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        doc = docx.Document(uploaded_file)
+        return "\n".join([para.text for para in doc.paragraphs])
+    elif uploaded_file.type == "text/plain":
+        return str(uploaded_file.read(), "utf-8")
+    else:
+        return "Unsupported file format."
 
-# === GPT Call ===
-def gpt_refine(text_from_gemini):
-    response = openai.ChatCompletion.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": "Bạn là trợ lý thông minh, hãy viết lại nội dung sau rõ ràng, hấp dẫn và mạch lạc hơn."},
-            {"role": "user", "content": text_from_gemini}
-        ]
-    )
-    return response.choices[0].message["content"]
-
-# === Web Search ===
+# --- Xử lý truy vấn SerpAPI ---
 def web_search(query):
-    search = GoogleSearch({"q": query, "api_key": serpapi_key})
-    results = search.get_dict()
+    params = {
+        "engine": "google",
+        "q": query,
+        "api_key": SERPAPI_KEY,
+        "num": 5
+    }
+    search = GoogleSearch(params)
+    results = search.get_dict().get("organic_results", [])
     output = ""
-    for idx, r in enumerate(results.get("organic_results", [])[:5], 1):
-        title = r.get("title", "")
-        link = r.get("link", "")
-        snippet = r.get("snippet", "")
-        output += f"{idx}. [{title}]({link})\n{snippet}\n\n"
+    for idx, result in enumerate(results, 1):
+        link = result.get("link", "")
+        title = result.get("title", "No title")
+        output += f"{idx}. [{title}]({link})\n\n"
     return output or "Không tìm thấy kết quả phù hợp."
 
-# === File Reader ===
-def extract_text(file):
-    if file.name.endswith(".pdf"):
-        with fitz.open(stream=file.read(), filetype="pdf") as doc:
-            return "\n".join([page.get_text() for page in doc])
-    elif file.name.endswith(".docx"):
-        document = docx.Document(file)
-        return "\n".join([para.text for para in document.paragraphs])
+# --- Giao diện Streamlit ---
+st.set_page_config(page_title="Trợ lý AI Tổng hợp", layout="wide")
+st.title("🤖 Trợ lý AI - ChatGPT x Gemini x DeepSeek x SerpAPI")
+
+uploaded_file = st.file_uploader("Tải lên tài liệu để trợ lý AI tự học", type=["pdf", "docx", "txt"])
+query = st.text_area("Nhập câu hỏi cần trợ lý AI giải quyết")
+
+use_gpt = st.checkbox("Sử dụng ChatGPT", value=True)
+use_gemini = st.checkbox("Sử dụng Gemini", value=True)
+use_deepseek = st.checkbox("Sử dụng DeepSeek", value=True)
+use_web = st.checkbox("Tìm kiếm trên web (SerpAPI)", value=False)
+compare_mode = st.checkbox("Chế độ so sánh")
+
+if st.button("Gửi yêu cầu"):
+    docs = []
+    if uploaded_file:
+        content = read_file(uploaded_file)
+        text_splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+        chunks = text_splitter.split_text(content)
+        docs = [Document(page_content=c) for c in chunks]
+        st.success(f"✅ Đã đọc {len(docs)} đoạn văn bản từ tài liệu.")
+        embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+        vectorstore = FAISS.from_documents(docs, embedding=embeddings)
+        retriever = vectorstore.as_retriever()
+        retrieved_docs = retriever.get_relevant_documents(query)
+        context = "\n".join([doc.page_content for doc in retrieved_docs[:3]])
     else:
-        return file.read().decode("utf-8")
+        context = ""
 
-# === Streamlit App UI ===
-st.title("🤖 Trợ lý AI tổng hợp")
-user_input = st.chat_input("Nhập câu hỏi hoặc nội dung bạn muốn...")
+    results = {}
 
-uploaded_files = st.file_uploader("Tải lên tài liệu (PDF, DOCX, TXT)", accept_multiple_files=True)
-doc_text = ""
-if uploaded_files:
-    for file in uploaded_files:
-        doc_text += extract_text(file)
+    if use_gpt:
+        gpt_prompt = f"Trả lời câu hỏi sau dựa trên ngữ cảnh:\n\n{context}\n\nCâu hỏi: {query}"
+        completion = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": gpt_prompt}]
+        )
+        results["ChatGPT"] = completion.choices[0].message.content
 
-col1, col2 = st.columns(2)
-use_web = col1.checkbox("🔎 Tìm kiếm web", value=False)
-compare_mode = col2.checkbox("📊 So sánh các AI", value=False)
+    if use_gemini:
+        gemini_prompt = f"Trả lời câu hỏi sau dựa trên ngữ cảnh:\n\n{context}\n\nCâu hỏi: {query}"
+        gemini_model = genai.GenerativeModel("gemini-pro")
+        response = gemini_model.generate_content(gemini_prompt)
+        results["Gemini"] = response.text
 
-if user_input:
-    final_prompt = doc_text + "\n\n" + user_input
-    with st.spinner("Đang xử lý với DeepSeek..."):
-        deep_out = deepseek_response(final_prompt)
-
-    with st.spinner("Phân tích với Gemini..."):
-        gemini_out = gemini_response(deep_out)
-
-    with st.spinner("Tối ưu với GPT-4o..."):
-        gpt_out = gpt_refine(gemini_out)
+    if use_deepseek:
+        deep_headers = {
+            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        deep_payload = {
+            "model": "deepseek-chat",
+            "messages": [{"role": "user", "content": f"{context}\n\n{query}"}]
+        }
+        r = requests.post("https://api.deepseek.com/chat/completions", headers=deep_headers, json=deep_payload)
+        if r.status_code == 200:
+            results["DeepSeek"] = r.json()["choices"][0]["message"]["content"]
+        else:
+            results["DeepSeek"] = f"Lỗi DeepSeek: {r.text}"
 
     if use_web:
-        with st.spinner("Tìm kiếm trên Google..."):
-            web_result = web_search(user_input)
-            st.markdown("### 🌐 Kết quả tìm kiếm từ Google:")
-            st.markdown(web_result)
+        results["Web Search"] = web_search(query)
 
     if compare_mode:
-        st.markdown("## 🤖 So sánh kết quả giữa các AI")
-        st.chat_message("deepseek").markdown(deep_out)
-        st.chat_message("gemini").markdown(gemini_out)
-        st.chat_message("gpt").markdown(gpt_out)
+        st.subheader("🧠 So sánh kết quả các AI")
+        for name, answer in results.items():
+            st.markdown(f"### {name}")
+            st.write(answer)
+            st.markdown("---")
     else:
-        st.chat_message("assistant").markdown(gpt_out)
+        for name, answer in results.items():
+            st.subheader(f"📌 Trả lời từ {name}")
+            st.write(answer)
+            break
