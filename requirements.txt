@@ -3,9 +3,8 @@ openai
 google-generativeai
 langchain==0.1.20
 langchain-community==0.0.26
-chromadb
 tiktoken
-python-docx
 PyMuPDF
+python-docx
 google-search-results
 python-dotenv
