@@ -6,5 +6,5 @@ chromadb
 tiktoken
 python-docx
 PyMuPDF
-serpapi
+google-search-results
 python-dotenv
