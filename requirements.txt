@@ -1,12 +1,11 @@
 streamlit
 openai
 google-generativeai
-langchain
-langchain-community
+langchain==0.1.20
+langchain-community==0.0.26
 chromadb
 tiktoken
-python-docx
 PyMuPDF
-serpapi
+python-docx
+google-search-results
 python-dotenv
-PyPDF2
