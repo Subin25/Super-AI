@@ -1,18 +1,18 @@
 import streamlit as st
 from dotenv import load_dotenv
 import os
+import base64
 import requests
-import json
 
 load_dotenv()
 
-st.set_page_config(page_title="Trợ lý AI đa mô hình", layout="wide")
+st.set_page_config(page_title="Trợ lý AI tổng hợp", layout="wide")
 
-# Sidebar menu
-st.sidebar.title("⚙️ Tính năng")
+# Sidebar
+st.sidebar.title("🔧 Tính năng")
 menu = st.sidebar.radio("Chọn chức năng", [
-    "🤖 Trò chuyện với trợ lý AI",
-    "📁 Tải lên tài liệu",
+    "🧠 Trò chuyện với trợ lý AI",
+    "🗂 Tải lên tài liệu",
     "💾 Lưu phiên trò chuyện"
 ])
 
@@ -20,95 +20,96 @@ menu = st.sidebar.radio("Chọn chức năng", [
 if "chat_log" not in st.session_state:
     st.session_state.chat_log = []
 
-if menu == "🤖 Trò chuyện với trợ lý AI":
-    st.title("😎 Trợ lý AI đa mô hình")
+if menu == "🧠 Trò chuyện với trợ lý AI":
+    st.title("😄 Trợ lý AI đa mô hình")
 
-    # Chọn AI và thứ tự xử lý
-    st.subheader("Chọn AI để xử lý (thứ tự ưu tiên):")
-    ai_list = st.multiselect(
-        "Chọn từ 1 đến 3 AI",
-        options=["DeepSeek", "GPT", "Gemini"],
-        default=["DeepSeek", "GPT", "Gemini"]
-    )
+    # Chọn AI thứ tự xử lý
+    selected_ais = st.multiselect("Chọn AI để xử lý (thứ tự ưu tiên):", ["DeepSeek", "GPT", "Gemini"], default=["DeepSeek", "GPT"])
+    user_input = st.text_input("Hỏi gì đó bên dưới để bắt đầu…")
 
-    user_input = st.text_input("Hỏi gì đó bên dưới để bắt đầu...")
+    ai_responses = {}
+    error_messages = []
+    final_response = ""
 
     if user_input:
-        responses = {}
-        final_summary = ""
-
-        for ai in ai_list:
+        for ai in selected_ais:
             if ai == "DeepSeek":
                 try:
-                    headers = {
-                        "Authorization": f"Bearer {os.getenv('DEEPSEEK_API_KEY')}",
-                        "Content-Type": "application/json"
+                    deepseek_headers = {
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {os.getenv('DEEPSEEK_API_KEY')}"
                     }
-                    payload = {
+                    deepseek_data = {
                         "model": "deepseek-chat",
                         "messages": [{"role": "user", "content": user_input}]
                     }
-                    res = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload)
-                    res_json = res.json()
-                    answer = res_json["choices"][0]["message"]["content"]
-                    responses["DeepSeek"] = answer
+                    res = requests.post("https://api.deepseek.com/v1/chat/completions", json=deepseek_data, headers=deepseek_headers)
+                    res.raise_for_status()
+                    answer = res.json()["choices"][0]["message"]["content"]
+                    ai_responses["DeepSeek"] = answer
+                    final_response += answer + "\n"
                 except Exception as e:
-                    responses["DeepSeek"] = f"[DeepSeek lỗi]: {e}"
+                    error_messages.append(f"❌ DeepSeek lỗi: {e}")
 
             elif ai == "GPT":
                 try:
-                    headers = {
-                        "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
-                        "Content-Type": "application/json"
+                    openai_headers = {
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}"
                     }
-                    payload = {
+                    openai_data = {
                         "model": "gpt-3.5-turbo",
                         "messages": [{"role": "user", "content": user_input}]
                     }
-                    res = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
-                    res_json = res.json()
-                    answer = res_json["choices"][0]["message"]["content"]
-                    responses["GPT"] = answer
+                    res = requests.post("https://api.openai.com/v1/chat/completions", json=openai_data, headers=openai_headers)
+                    res.raise_for_status()
+                    answer = res.json()["choices"][0]["message"]["content"]
+                    ai_responses["GPT"] = answer
+                    final_response += answer + "\n"
                 except Exception as e:
-                    responses["GPT"] = f"[GPT lỗi]: {e}"
+                    error_messages.append(f"❌ GPT lỗi: {e}")
 
             elif ai == "Gemini":
                 try:
-                    headers = {"Content-Type": "application/json"}
-                    payload = {
+                    gemini_data = {
                         "contents": [{"parts": [{"text": user_input}]}]
                     }
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={os.getenv('GEMINI_API_KEY')}"
-                    res = requests.post(url, headers=headers, json=payload)
-                    res_json = res.json()
-                    answer = res_json["candidates"][0]["content"]["parts"][0]["text"]
-                    responses["Gemini"] = answer
+                    headers = {
+                        "Content-Type": "application/json"
+                    }
+                    res = requests.post(
+                        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={os.getenv('GOOGLE_API_KEY')}",
+                        json=gemini_data,
+                        headers=headers
+                    )
+                    res.raise_for_status()
+                    answer = res.json()["candidates"][0]["content"]["parts"][0]["text"]
+                    ai_responses["Gemini"] = answer
+                    final_response += answer + "\n"
                 except Exception as e:
-                    responses["Gemini"] = f"[Gemini lỗi]: {e}"
+                    error_messages.append(f"❌ Gemini lỗi: {e}")
 
-        # Hiển thị phản hồi từng AI
-        for ai in ai_list:
-            with st.expander(f"📦 {ai} phản hồi:"):
-                st.write(responses[ai])
+        # Hiển thị lỗi (nếu có)
+        for msg in error_messages:
+            st.error(msg)
 
-        # Tổng hợp phản hồi
-        final_summary = "\n\n".join(
-            [f"➡️ {ai}: {responses[ai]}" for ai in ai_list if not responses[ai].startswith(f"[{ai} lỗi]")]
-        )
+        # Hiển thị phản hồi tổng hợp
+        st.markdown("""
+        <h4>💡 Phản hồi tổng hợp</h4>
+        <div style='background-color: #f9f9f9; padding: 1rem; border-radius: 5px;'>
+        <pre style='white-space: pre-wrap;'>
+        {}</pre></div>
+        """.format(final_response.strip()), unsafe_allow_html=True)
 
-        st.markdown("### 💡 Phản hồi tổng hợp")
-        if final_summary:
-            st.success(final_summary)
-            st.session_state.chat_log.append(f"💬 {user_input}\n{final_summary}")
-        else:
-            st.warning("Tất cả các AI đều gặp lỗi. Vui lòng kiểm tra API key hoặc thử lại sau.")
+        # Ghi lại vào lịch sử
+        st.session_state.chat_log.append(f"🧠 {user_input}\n{final_response.strip()}")
 
-elif menu == "📁 Tải lên tài liệu":
-    st.title("📄 Tải lên tài liệu")
-    uploaded_files = st.file_uploader("Kéo thả hoặc chọn tệp", type=["pdf", "docx", "txt"], accept_multiple_files=True)
+elif menu == "🗂 Tải lên tài liệu":
+    st.title("📄 Tải lên tài liệu (PDF, DOCX, TXT)")
+    uploaded_files = st.file_uploader("Kéo thả hoặc chọn nhiều tệp", type=["pdf", "docx", "txt"], accept_multiple_files=True)
     if uploaded_files:
-        for f in uploaded_files:
-            st.success(f"Đã tải lên: {f.name}")
+        for file in uploaded_files:
+            st.success(f"Đã tải lên: {file.name}")
     else:
         st.info("Chưa có tệp nào được tải lên.")
 
@@ -117,7 +118,7 @@ elif menu == "💾 Lưu phiên trò chuyện":
     if st.session_state.chat_log:
         chat_text = "\n\n".join(st.session_state.chat_log)
         b64 = base64.b64encode(chat_text.encode()).decode()
-        href = f'<a href="data:file/txt;base64,{b64}" download="chat_log.txt">📥 Tải file trò chuyện</a>'
+        href = f'<a href="data:file/txt;base64,{b64}" download="chat_log.txt">📥 Tải về file chat_log.txt</a>'
         st.markdown(href, unsafe_allow_html=True)
     else:
-        st.info("Không có nội dung nào để lưu.")
+        st.info("Chưa có nội dung trò chuyện để lưu.")
