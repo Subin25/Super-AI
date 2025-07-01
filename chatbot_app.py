@@ -1,16 +1,22 @@
 import streamlit as st
 from dotenv import load_dotenv
 import os
+import base64
 import requests
 
 load_dotenv()
+
+# API Keys
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 st.set_page_config(page_title="Trợ lý AI tổng hợp", layout="wide")
 
 # Sidebar
 st.sidebar.title("🔧 Tính năng")
 menu = st.sidebar.radio("Chọn chức năng", [
-    "💬 Trò chuyện với trợ lý AI",
+    "🤖 Trò chuyện với trợ lý AI",
     "🗂 Tải lên tài liệu",
     "💾 Lưu phiên trò chuyện"
 ])
@@ -19,64 +25,75 @@ menu = st.sidebar.radio("Chọn chức năng", [
 if "chat_log" not in st.session_state:
     st.session_state.chat_log = []
 
-if menu == "💬 Trò chuyện với trợ lý AI":
-    st.title("🤖 Trợ lý AI đa mô hình")
+# === Các hàm gọi API ===
+def get_deepseek_response(prompt):
+    try:
+        headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
+        data = {"model": "deepseek-chat", "messages": [{"role": "user", "content": prompt}]}
+        response = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=data)
+        return response.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        return f"[DeepSeek lỗi]: {e}"
 
-    ai_options = ["DeepSeek", "GPT", "Gemini"]
-    selected_ais = st.multiselect("Chọn AI để xử lý tuần tự (thứ tự quan trọng):", ai_options, default=["DeepSeek", "GPT", "Gemini"])
-    user_input = st.text_input("Hỏi gì đó bên dưới để bắt đầu…")
+def get_gpt_response(prompt):
+    try:
+        headers = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
+        data = {"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": prompt}]}
+        response = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=data)
+        return response.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        return f"[GPT lỗi]: {e}"
 
-    if user_input:
-        response_text = user_input
+def get_gemini_response(prompt):
+    try:
+        headers = {"Content-Type": "application/json"}
+        data = {"contents": [{"parts": [{"text": prompt}]}]}
+        response = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_API_KEY}",
+            headers=headers, json=data
+        )
+        return response.json()["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception as e:
+        return f"[Gemini lỗi]: {e}"
 
-        for ai in selected_ais:
-            if ai == "DeepSeek":
-                try:
-                    deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
-                    res = requests.post(
-                        "https://api.deepseek.com/chat/completions",
-                        headers={"Authorization": f"Bearer {deepseek_api_key}"},
-                        json={
-                            "model": "deepseek-chat",
-                            "messages": [{"role": "user", "content": response_text}]
-                        }
-                    )
-                    response_text = res.json()["choices"][0]["message"]["content"]
-                except Exception as e:
-                    st.error(f"❌ DeepSeek lỗi: {e}")
+# === Giao diện từng tab ===
+if menu == "🤖 Trò chuyện với trợ lý AI":
+    st.title("😄 Trợ lý AI đa mô hình")
+    selected_models = st.multiselect("Chọn AI để xử lý (thứ tự ưu tiên):", ["DeepSeek", "GPT", "Gemini"], default=["DeepSeek", "GPT", "Gemini"])
+    prompt = st.text_input("Hỏi gì đó bên dưới để bắt đầu...")
 
-            elif ai == "GPT":
-                try:
-                    openai_api_key = os.getenv("OPENAI_API_KEY")
-                    res = requests.post(
-                        "https://api.openai.com/v1/chat/completions",
-                        headers={"Authorization": f"Bearer {openai_api_key}"},
-                        json={
-                            "model": "gpt-3.5-turbo",
-                            "messages": [{"role": "user", "content": response_text}]
-                        }
-                    )
-                    response_text = res.json()["choices"][0]["message"]["content"]
-                except Exception as e:
-                    st.error(f"❌ GPT lỗi: {e}")
+    if prompt and selected_models:
+        ai_results = {}
+        final_answer = None
 
-            elif ai == "Gemini":
-                try:
-                    gemini_api_key = os.getenv("GEMINI_API_KEY")
-                    res = requests.post(
-                        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={gemini_api_key}",
-                        json={"contents": [{"parts": [{"text": response_text}]}]}
-                    )
-                    response_text = res.json()["candidates"][0]["content"]["parts"][0]["text"]
-                except Exception as e:
-                    st.error(f"❌ Gemini lỗi: {e}")
+        for model in selected_models:
+            if model == "DeepSeek":
+                result = get_deepseek_response(prompt)
+            elif model == "GPT":
+                result = get_gpt_response(prompt)
+            elif model == "Gemini":
+                result = get_gemini_response(prompt)
 
-        st.subheader("💡 Phản hồi tổng hợp")
-        st.write(response_text)
-        st.session_state.chat_log.append(f"🧑‍💻 {user_input}\n🤖 {response_text}")
+            ai_results[model] = result
+
+            if not result.startswith("[") and "lỗi" not in result.lower():
+                final_answer = result  # Ghi nhận phản hồi thành công cuối cùng
+
+        for model, result in ai_results.items():
+            if result.startswith("["):
+                st.error(f"❌ {model} lỗi: {result}")
+            else:
+                st.success(f"✅ {model} phản hồi thành công.")
+
+        st.markdown("### 💡 Phản hồi tổng hợp")
+        if final_answer:
+            st.write(final_answer)
+            st.session_state.chat_log.append(f"Bạn: {prompt}\nAI: {final_answer}")
+        else:
+            st.warning("Tất cả các AI đều gặp lỗi. Vui lòng kiểm tra API key hoặc thử lại sau.")
 
 elif menu == "🗂 Tải lên tài liệu":
-    st.title("📄 Tải lên tài liệu")
+    st.title("📄 Tải lên tài liệu (PDF, DOCX, TXT)")
     uploaded_files = st.file_uploader("Kéo thả hoặc chọn nhiều tệp", type=["pdf", "docx", "txt"], accept_multiple_files=True)
     if uploaded_files:
         for file in uploaded_files:
