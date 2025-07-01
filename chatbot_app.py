@@ -8,7 +8,7 @@ import datetime
 import fitz  # PyMuPDF
 import docx  # python-docx
 from serpapi import GoogleSearch
-from langchain_community.vectorstores import Chroma
+from langchain_community.vectorstores import FAISS
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.document_loaders import TextLoader
