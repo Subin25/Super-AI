@@ -1,56 +1,57 @@
 import streamlit as st
-from serpapi import GoogleSearch
-from PyPDF2 import PdfReader
-import os
 from dotenv import load_dotenv
+import os
+
+# Xử lý lỗi khi không có serpapi
+try:
+    from serpapi import GoogleSearch
+except ImportError:
+    GoogleSearch = None
+
 load_dotenv()
 
 st.set_page_config(page_title="Trợ lý AI tổng hợp", layout="wide")
 
-def search_google(query):
-    params = {
-        "engine": "google",
-        "q": query,
-        "api_key": os.getenv("SERPAPI_API_KEY")
-    }
-    search = GoogleSearch(params)
-    results = search.get_dict()
-    return results.get("organic_results", [])
-
-def handle_file_upload(uploaded_file):
-    if uploaded_file.type == "application/pdf":
-        reader = PdfReader(uploaded_file)
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text() + "\n"
-        return text
-    return "Unsupported file type."
-
-with st.sidebar:
-    menu = st.radio("📚 Chọn chức năng", ["🌐 Chatbot", "📅 Thư viện", "🛠 Công cụ"], label_visibility="collapsed")
-
 st.title("🧠 Trợ lý AI tổng hợp")
+menu = st.sidebar.radio("Chức năng", [
+    "Tải lên tài liệu",
+    "Tìm kiếm trên mạng",
+    "So sánh hai mô hình AI"
+])
 
-if menu == "🌐 Chatbot":
-    st.subheader("💬 Tương tác AI")
-    use_web = st.checkbox("🔎 Tìm kiếm web")
-    user_input = st.text_input("Nhập câu hỏi hoặc nội dung bạn muốn...", "")
-    if st.button("Gửi") and user_input:
-        if use_web:
-            results = search_google(user_input)
-            for result in results[:3]:
-                st.write(f"[{result['title']}]({result['link']})")
-                st.write(result.get("snippet", ""))
-        else:
-            st.write("💡 AI đang xử lý câu hỏi...")
-
-elif menu == "📅 Thư viện":
-    st.subheader("📄 Phân tích tài liệu")
-    uploaded_file = st.file_uploader("Tải lên tài liệu (PDF, DOCX, TXT)", type=["pdf", "docx", "txt"])
+if menu == "Tải lên tài liệu":
+    st.header("📄 Tải lên tài liệu (PDF, DOCX, TXT)")
+    uploaded_file = st.file_uploader("Chọn tệp", type=["pdf", "docx", "txt"])
     if uploaded_file:
-        content = handle_file_upload(uploaded_file)
-        st.text_area("📖 Nội dung tài liệu", value=content, height=300)
+        st.success(f"Đã tải lên: {uploaded_file.name}")
+    else:
+        st.info("Chưa có tệp nào được tải lên.")
 
-elif menu == "🛠 Công cụ":
-    st.subheader("⚙️ Tùy chọn nâng cao")
-    st.write("Chức năng sẽ sớm ra mắt.")
+elif menu == "Tìm kiếm trên mạng":
+    st.header("🔍 Tìm kiếm thông tin qua Google")
+    query = st.text_input("Nhập nội dung cần tìm")
+    if query:
+        if GoogleSearch:
+            params = {
+                "q": query,
+                "api_key": os.getenv("SERPAPI_API_KEY")
+            }
+            search = GoogleSearch(params)
+            results = search.get_dict()
+            if "organic_results" in results:
+                for r in results["organic_results"]:
+                    st.markdown(f"[{r['title']}]({r['link']})")
+            else:
+                st.warning("Không có kết quả.")
+        else:
+            st.error("Chưa cài đặt thư viện serpapi.")
+
+elif menu == "So sánh hai mô hình AI":
+    st.header("🤖 So sánh mô hình ChatGPT và Gemini")
+    prompt = st.text_area("Nhập nội dung cần hỏi:")
+    if prompt:
+        st.info("(Ví dụ mô phỏng - cần tích hợp API thật)")
+        st.subheader("🔷 ChatGPT:")
+        st.write("Trả lời từ ChatGPT: ...")
+        st.subheader("🟡 Gemini:")
+        st.write("Trả lời từ Gemini: ...")
